@@ -32,9 +32,10 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <syslog.h>
+#include <netdb.h>
 
-#define LISTEN_ADDR 127.0.0.1
-#define SRVPORT 12345
+#define LISTEN_ADDR "127.0.0.1"
+#define LISTEN_PORT "12345"
 #define BACKLOG 4   // number of acceptable connections to queue
 #define BUFSIZE 512
 
@@ -132,38 +133,39 @@ void daemonize(char *program_name, int facility)
 
 int main(int argc, char *argv[])
 {
-    struct sockaddr_in sa;
     char msg[BUFSIZE] = "", filename[64] = "";
-    int bytes_read = 0, random = 0;
+    int retval, bytes_read = 0, random = 0;
     time_t t = time(NULL);
     struct tm *tm;
     char timestamp[22];
     char *progname = basename(argv[0]);
+    struct addrinfo *ai, hints;
 
     if (argc > 1) printf("%s does not take any arguments\n", progname);
 
     install_sighandlers();
     daemonize(progname, LOG_DAEMON);
 
-    if ( ( sd = socket(AF_INET, SOCK_STREAM, 0) ) == -1 ) 
-    {
+    memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    if ((retval = getaddrinfo(LISTEN_ADDR, LISTEN_PORT, &hints, &ai))) {
+        syslog(LOG_ERR, "error on getaddrinfo(): %s\n", gai_strerror(retval));
+        exit(EXIT_FAILURE);
+    }
+
+    if ((sd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol)) == -1) {
         syslog(LOG_ERR, "error on socket(): %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
-    memset(&sa, 0, sizeof(sa));
-    sa.sin_family = AF_INET;
-    sa.sin_port = htons(SRVPORT);
-    sa.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    if( ( bind(sd, (struct sockaddr *)&sa, sizeof(sa)) ) == -1 )
-    {
+    if ((retval = bind(sd, ai->ai_addr, ai->ai_addrlen)) == -1) {
         syslog(LOG_ERR, "error on bind(): %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
-    if( ( listen(sd, BACKLOG) ) < 0)
-    {
+    if ((retval = listen(sd, BACKLOG)) == -1) {
         syslog(LOG_ERR, "error on listen(): %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
@@ -172,8 +174,7 @@ int main(int argc, char *argv[])
 
     while(1)
     {
-        if ( ( client = accept(sd, NULL, NULL) ) == -1 )
-        {
+        if ((client = accept(sd, NULL, NULL)) == -1) {
             syslog(LOG_WARNING, "error on accept(): %s\n", strerror(errno));
             continue;
         }
@@ -182,7 +183,7 @@ int main(int argc, char *argv[])
         client_connected = 1;
 
         tm = localtime(&t);
-        if ( (tm != NULL) && strftime(timestamp, sizeof(timestamp), "%d.%m.%Y-%T", tm)) {
+        if ((tm != NULL) && strftime(timestamp, sizeof(timestamp), "%d.%m.%Y-%T", tm)) {
             snprintf(filename, sizeof(filename), "%s%s", PRINTOUT_PREFIX, timestamp);
         } else {
             syslog(LOG_WARNING, "error getting current time\n");
@@ -194,14 +195,14 @@ int main(int argc, char *argv[])
 
         syslog(LOG_INFO, "start printing to %s", filename);
         fd = open(filename, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-        if (fd == -1) {
+        if ((fd = open(filename, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR)) == -1) {
             syslog(LOG_WARNING, "error opening printfile %s: %s", filename, strerror(errno));
             continue;
         }
 
         fd_open = 1;
         bytes_read = 0;
-        while( ( bytes_read = read(client, msg, BUFSIZE) ) > 0) write(fd, msg, bytes_read);
+        while((bytes_read = read(client, msg, BUFSIZE)) > 0) write(fd, msg, bytes_read);
 
         syslog(LOG_INFO, "done printing to %s", filename);
         memset(msg, 0, BUFSIZE);    // eliminate false evidence in memory

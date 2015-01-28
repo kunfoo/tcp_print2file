@@ -38,7 +38,6 @@
 #define BACKLOG 4   // number of acceptable connections to queue
 #define BUFSIZE 512
 
-#define LOG_MSG_SIZE 256
 #define PRINTOUT_PREFIX "/usb/tcp_fileprinter/"
 // #define PRINTOUT_PREFIX "/tmp/print"
 
@@ -202,7 +201,7 @@ int main(int argc, char *argv[])
 
         fd_open = 1;
         bytes_read = 0;
-        while( ( bytes_read = read(client, msg, BUFSIZE-1) ) > 0) write(fd, msg, bytes_read);
+        while( ( bytes_read = read(client, msg, BUFSIZE) ) > 0) write(fd, msg, bytes_read);
 
         syslog(LOG_INFO, "done printing to %s", filename);
         memset(msg, 0, BUFSIZE);    // eliminate false evidence in memory

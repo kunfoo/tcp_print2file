@@ -194,7 +194,6 @@ int main(int argc, char *argv[])
         }
 
         syslog(LOG_INFO, "start printing to %s", filename);
-        fd = open(filename, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
         if ((fd = open(filename, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR)) == -1) {
             syslog(LOG_WARNING, "error opening printfile %s: %s", filename, strerror(errno));
             continue;
